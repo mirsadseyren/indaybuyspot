@@ -43,9 +43,8 @@ def fetch_data(ticker):
         return ticker, None
 
 def plot_stock(ticker, df, tolerance):
-    # Sadece bugünün (veya en son günün) verisini filtrele
-    last_date = df.index[-1].date()
-    df_plot = df[df.index.date == last_date]
+    # Tüm 7 günlük veriyi kullan
+    df_plot = df
 
     fig = go.Figure()
 
@@ -98,7 +97,7 @@ def plot_stock(ticker, df, tolerance):
                                  name='Güçlü Sat Sinyali'))
 
     fig.update_layout(
-        title=f"{ticker} - 5 Dakikalık Keltner Kanalı (Sadece {last_date} Tarihli Veriler)",
+        title=f"{ticker} - 5 Dakikalık Keltner Kanalı (Son 7 Günlük Veriler)",
         yaxis_title="Fiyat (TL)",
         xaxis_title="Zaman",
         xaxis_rangeslider_visible=False,
