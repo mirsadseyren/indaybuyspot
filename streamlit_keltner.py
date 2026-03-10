@@ -102,7 +102,14 @@ def plot_stock(ticker, df, tolerance):
         xaxis_title="Zaman",
         xaxis_rangeslider_visible=False,
         height=600,
-        margin=dict(l=0, r=0, t=50, b=0)
+        margin=dict(l=0, r=0, t=50, b=0),
+        xaxis=dict(
+            type="date",
+            rangebreaks=[
+                dict(bounds=["sat", "mon"]),  # Hafta sonunu gizle
+                dict(bounds=[18.2, 9.9], pattern="hour"),  # Borsa dışı saatleri gizle (18:10'dan sonra ve 09:55'ten önce)
+            ]
+        )
     )
     
     return fig
