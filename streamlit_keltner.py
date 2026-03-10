@@ -32,15 +32,33 @@ def fetch_data(ticker):
     try:
         ticker_symbol = f"{ticker}.IS"
         ticker_obj = yf.Ticker(ticker_symbol)
+        
+        # 5 dakikalık 7 günlük veri
         df = ticker_obj.history(period='7d', interval='5m')
         
+        # Beklenen en yüksek ve en düşük fiyatlar (Pivot yöntemiyle hesaplamak için 1 günlük veri çekelim)
+        df_daily = ticker_obj.history(period='5d', interval='1d')
+        
+        expected_high, expected_low = None, None
+        
+        # Eğer dünün verisi tamamsa (Pivot hesaplaması) -> P = (H+L+C)/3, R1 = 2P - L, S1 = 2P - H
+        if not df_daily.empty and len(df_daily) >= 2:
+            yesterday_data = df_daily.iloc[-2]  # Dünün verisi (son satır bugündür)
+            prev_h = yesterday_data['High']
+            prev_l = yesterday_data['Low']
+            prev_c = yesterday_data['Close']
+            
+            pivot = (prev_h + prev_l + prev_c) / 3
+            expected_high = (2 * pivot) - prev_l
+            expected_low = (2 * pivot) - prev_h
+            
         if df.empty or len(df) < 30:
-            return ticker, None
+            return ticker, None, None, None
             
         df = calculate_keltner_channels(df)
-        return ticker, df
+        return ticker, df, expected_high, expected_low
     except Exception as e:
-        return ticker, None
+        return ticker, None, None, None
 
 def plot_stock(ticker, df, tolerance):
     # Tüm 7 günlük veriyi kullan
@@ -144,7 +162,9 @@ def main():
         with ThreadPoolExecutor(max_workers=10) as executor:
             fetched_data = list(executor.map(fetch_data, tickers))
             
-        for i, (ticker, df) in enumerate(fetched_data):
+        info_data = [] # Tüm analiz edilen hisselerin beklenen seviyeleri tablosu listesi
+            
+        for i, (ticker, df, expected_high, expected_low) in enumerate(fetched_data):
             progress_bar.progress((i + 1) / len(tickers))
             
             if df is not None:
@@ -167,7 +187,9 @@ def main():
                         'Sinyal': '🟢 GÜÇLÜ AL',
                         'Fiyat (TL)': round(current_price, 2),
                         'Hedef Band (TL)': round(lower_band, 2),
-                        'Banda Uzaklık (%)': round(distance_buy_pct, 2)
+                        'Banda Uzaklık (%)': round(distance_buy_pct, 2),
+                        'Beklenen Min (Gün)': round(expected_low, 2) if expected_low else '-',
+                        'Beklenen Max (Gün)': round(expected_high, 2) if expected_high else '-'
                     })
                 elif distance_sell_pct <= tolerance:
                     results.append({
@@ -175,12 +197,25 @@ def main():
                         'Sinyal': '🔴 GÜÇLÜ SAT',
                         'Fiyat (TL)': round(current_price, 2),
                         'Hedef Band (TL)': round(upper_band, 2),
-                        'Banda Uzaklık (%)': round(distance_sell_pct, 2)
+                        'Banda Uzaklık (%)': round(distance_sell_pct, 2),
+                        'Beklenen Min (Gün)': round(expected_low, 2) if expected_low else '-',
+                        'Beklenen Max (Gün)': round(expected_high, 2) if expected_high else '-'
                     })
+                    
+                info_data.append({
+                    'Hisse': ticker,
+                    'Güncel Fiyat (TL)': round(current_price, 2),
+                    'Öngörülen Min (TL)': round(expected_low, 2) if expected_low else '-',
+                    'Öngörülen Max (TL)': round(expected_high, 2) if expected_high else '-'
+                })
             else:
                 st.error(f"{ticker} verisi çekilemedi veya yetersiz (7 günlük 5D).")
 
         st.success("Analiz tamamlandı!")
+        
+        st.subheader("📊 Günlük Beklenen Min-Max Fiyatlar")
+        if info_data:
+            st.dataframe(pd.DataFrame(info_data), use_container_width=True)
 
         st.subheader("🎯 Mevcut Alım / Satım Sinyali Veren Hisseler")
         if results:
