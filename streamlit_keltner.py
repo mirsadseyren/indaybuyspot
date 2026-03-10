@@ -42,35 +42,51 @@ def fetch_data(ticker):
     except Exception as e:
         return ticker, None
 
-def plot_stock(ticker, df):
+def plot_stock(ticker, df, tolerance):
+    # Sadece bugünün (veya en son günün) verisini filtrele
+    last_date = df.index[-1].date()
+    df_plot = df[df.index.date == last_date]
+
     fig = go.Figure()
 
     # Candlestick
-    fig.add_trace(go.Candlestick(x=df.index,
-                open=df['Open'],
-                high=df['High'],
-                low=df['Low'],
-                close=df['Close'],
+    fig.add_trace(go.Candlestick(x=df_plot.index,
+                open=df_plot['Open'],
+                high=df_plot['High'],
+                low=df_plot['Low'],
+                close=df_plot['Close'],
                 name='Fiyat Mumu'))
 
     # Keltner Upper
-    fig.add_trace(go.Scatter(x=df.index, y=df['Keltner_Upper'], 
+    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['Keltner_Upper'], 
                              line=dict(color='rgba(255, 0, 0, 0.5)', width=1), 
                              name='Keltner Üst'))
     
     # EMA
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA'], 
+    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['EMA'], 
                              line=dict(color='rgba(255, 165, 0, 0.5)', width=1, dash='dash'), 
                              name='EMA (20)'))
 
     # Keltner Lower
-    fig.add_trace(go.Scatter(x=df.index, y=df['Keltner_Lower'], 
+    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['Keltner_Lower'], 
                              line=dict(color='rgba(0, 128, 0, 0.5)', width=1), 
                              name='Keltner Alt',
                              fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'))
+                             
+    # GÜÇLÜ AL noktalarını tespit et (fiyat belirlenen toleransa veya daha altına düştüğünde)
+    buy_signals = df_plot[((df_plot['Low'] - df_plot['Keltner_Lower']) / df_plot['Keltner_Lower'] * 100) <= tolerance]
+    
+    if not buy_signals.empty:
+        fig.add_trace(go.Scatter(x=buy_signals.index, y=buy_signals['Low'] - (buy_signals['Low'] * 0.001), # Biraz altına yerleştir
+                                 mode='markers+text',
+                                 marker=dict(symbol='triangle-up', size=14, color='green'),
+                                 text=['GÜÇLÜ AL'] * len(buy_signals),
+                                 textposition='bottom center',
+                                 textfont=dict(color='green', size=11, family='Arial Black'),
+                                 name='Güçlü Al Sinyali'))
 
     fig.update_layout(
-        title=f"{ticker} - 5 Dakikalık Keltner Kanalı",
+        title=f"{ticker} - 5 Dakikalık Keltner Kanalı (Sadece {last_date} Tarihli Veriler)",
         yaxis_title="Fiyat (TL)",
         xaxis_title="Zaman",
         xaxis_rangeslider_visible=False,
@@ -115,7 +131,7 @@ def main():
             
             if df is not None:
                 # Grafiği hazırla
-                graphs.append((ticker, plot_stock(ticker, df)))
+                graphs.append((ticker, plot_stock(ticker, df, tolerance)))
                 
                 # Sinyal kontrolü
                 latest_row = df.iloc[-1]
