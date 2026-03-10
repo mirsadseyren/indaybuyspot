@@ -28,13 +28,17 @@ def calculate_keltner_channels(df, ema_period=20, atr_period=14, multiplier=2.0)
     
     return df
 
-def fetch_data(ticker):
+def fetch_data(ticker, interval_val):
     try:
         ticker_symbol = f"{ticker}.IS"
         ticker_obj = yf.Ticker(ticker_symbol)
         
-        # 5 dakikalık 7 günlük veri
-        df = ticker_obj.history(period='7d', interval='5m')
+        if interval_val == "5 Dakikalık":
+            df = ticker_obj.history(period='7d', interval='5m')
+        elif interval_val == "Günlük":
+            df = ticker_obj.history(period='1y', interval='1d')
+        elif interval_val == "Haftalık":
+            df = ticker_obj.history(period='2y', interval='1wk')
         
         # Beklenen en yüksek ve en düşük fiyatlar (Pivot yöntemiyle hesaplamak için 1 günlük veri çekelim)
         df_daily = ticker_obj.history(period='5d', interval='1d')
@@ -60,8 +64,8 @@ def fetch_data(ticker):
     except Exception as e:
         return ticker, None, None, None
 
-def plot_stock(ticker, df, tolerance):
-    # Tüm 7 günlük veriyi kullan
+def plot_stock(ticker, df, tolerance, interval_val):
+    # Veriyi kullan
     df_plot = df
 
     fig = go.Figure()
@@ -114,8 +118,21 @@ def plot_stock(ticker, df, tolerance):
                                  textfont=dict(color='red', size=11, family='Arial Black'),
                                  name='Güçlü Sat Sinyali'))
 
+    if interval_val == "5 Dakikalık":
+        title_text = f"{ticker} - 5 Dakikalık Keltner Kanalı (Son 7 Günlük Veriler)"
+        rb = [
+            dict(bounds=["sat", "mon"]),  # Hafta sonunu gizle
+            dict(bounds=[18.2, 9.9], pattern="hour")  # Borsa dışı saatleri gizle
+        ]
+    elif interval_val == "Günlük":
+        title_text = f"{ticker} - Günlük Keltner Kanalı (Son 1 Yıllık Veriler)"
+        rb = [dict(bounds=["sat", "mon"])]  # Haftalık kapanışları gizle
+    else:
+        title_text = f"{ticker} - Haftalık Keltner Kanalı (Son 2 Yıllık Veriler)"
+        rb = []
+
     fig.update_layout(
-        title=f"{ticker} - 5 Dakikalık Keltner Kanalı (Son 7 Günlük Veriler)",
+        title=title_text,
         yaxis_title="Fiyat (TL)",
         xaxis_title="Zaman",
         xaxis_rangeslider_visible=False,
@@ -123,10 +140,7 @@ def plot_stock(ticker, df, tolerance):
         margin=dict(l=0, r=0, t=50, b=0),
         xaxis=dict(
             type="date",
-            rangebreaks=[
-                dict(bounds=["sat", "mon"]),  # Hafta sonunu gizle
-                dict(bounds=[18.2, 9.9], pattern="hour"),  # Borsa dışı saatleri gizle (18:10'dan sonra ve 09:55'ten önce)
-            ]
+            rangebreaks=rb
         )
     )
     
@@ -135,14 +149,16 @@ def plot_stock(ticker, df, tolerance):
 def main():
     st.title("📈 Keltner Channel Hisse Tarama & Analiz")
     st.markdown("""
-    Bu uygulama, girdiğiniz hisselerin 5 dakikalık (son 7 gün) verilerini çeker, 
+    Bu uygulama, girdiğiniz hisselerin seçilen periyottaki verilerini çeker, 
     Keltner kanallarını hesaplar ve fiyat Keltner kanallarında sınır bölgelere belirlenen tolerans mesafesinde yakınsa (veya aştıysa) **Alım/Satım Sinyalleri** tablosunda gösterir.
     """)
 
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         user_input = st.text_input("Analiz edilecek hisse kodlarını girin (Örn: THYAO ASELS GARAN HEDEF ODINE):", value="THYAO ASELS GARAN HEDEF ODINE")
     with col2:
+        interval_val = st.selectbox("Grafik Periyodu", ["5 Dakikalık", "Günlük", "Haftalık"])
+    with col3:
         tolerance = st.number_input("Tolerans (%) - Fiyat Alt banda ne kadar yakın olsun?", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
 
     if st.button("Analizi Başlat", type="primary"):
@@ -160,7 +176,7 @@ def main():
         progress_bar = st.progress(0)
         
         with ThreadPoolExecutor(max_workers=10) as executor:
-            fetched_data = list(executor.map(fetch_data, tickers))
+            fetched_data = list(executor.map(lambda t: fetch_data(t, interval_val), tickers))
             
         info_data = [] # Tüm analiz edilen hisselerin beklenen seviyeleri tablosu listesi
             
@@ -169,7 +185,7 @@ def main():
             
             if df is not None:
                 # Grafiği hazırla
-                graphs.append((ticker, plot_stock(ticker, df, tolerance)))
+                graphs.append((ticker, plot_stock(ticker, df, tolerance, interval_val)))
                 
                 # Sinyal kontrolü
                 latest_row = df.iloc[-1]
