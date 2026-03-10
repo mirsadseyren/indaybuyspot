@@ -61,8 +61,12 @@ def fetch_data(ticker, period='7d', interval='5m'):
         return ticker, None, None, None
 
 def plot_stock(ticker, df, tolerance, title_suffix, interval):
-    # Tüm veriyi kullan
-    df_plot = df
+    # Eğer "Bugün" seçildiyse grafikte sadece son günün verilerini göster
+    if title_suffix == 'Bugün (5 Dakikalık)':
+        last_date = df.index[-1].date()
+        df_plot = df[df.index.date == last_date]
+    else:
+        df_plot = df
 
     fig = go.Figure()
 
@@ -153,7 +157,7 @@ def main():
     with col1:
         user_input = st.text_input("Analiz edilecek hisse kodlarını girin:", value="THYAO ASELS GARAN HEDEF ODINE")
     with col2:
-        timeframe = st.selectbox("Zaman Dilimi", ["5 Dakikalık (Son 7 Gün)", "Günlük (Son 6 Ay)", "Haftalık (Son 2 Yıl)"])
+        timeframe = st.selectbox("Zaman Dilimi", ["Bugün (5 Dakikalık)", "5 Dakikalık (Son 7 Gün)", "Günlük (Son 6 Ay)", "Haftalık (Son 2 Yıl)"])
     with col3:
         tolerance = st.number_input("Tolerans (%) - Sınır mesafesi", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
 
@@ -165,7 +169,9 @@ def main():
             return
 
         # Seçime göre yfinance periyot ve intervallerinin belirlenmesi
-        if timeframe == "5 Dakikalık (Son 7 Gün)":
+        if timeframe == "Bugün (5 Dakikalık)":
+            period_val, interval_val, title_suffix = '7d', '5m', 'Bugün (5 Dakikalık)'
+        elif timeframe == "5 Dakikalık (Son 7 Gün)":
             period_val, interval_val, title_suffix = '7d', '5m', '5 Dakikalık'
         elif timeframe == "Günlük (Son 6 Ay)":
             period_val, interval_val, title_suffix = '6mo', '1d', 'Günlük'
