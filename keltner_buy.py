@@ -7,29 +7,22 @@ from concurrent.futures import ThreadPoolExecutor
 
 warnings.filterwarnings('ignore')
 
-def calculate_keltner_channels(df, ema_period=20, atr_period=14, multiplier=2.0):
+def calculate_bollinger_bands(df, window=20, std_dev_multiplier=2.0):
     """
-    Keltner Channel hesaplayan fonksiyon.
-    Orta Band: 20 periyotluk EMA
-    Üst Band: EMA + (Multiplier * ATR)
-    Alt Band: EMA - (Multiplier * ATR)
+    Bollinger Bands (BollM) hesaplayan fonksiyon.
+    Orta Band: 20 periyotluk SMA
+    Üst Band: SMA + (Multiplier * STD)
+    Alt Band: SMA - (Multiplier * STD)
     """
-    # EMA (Orta Band)
-    df['EMA'] = df['Close'].ewm(span=ema_period, adjust=False).mean()
+    # SMA (Orta Band)
+    df['SMA'] = df['Close'].rolling(window=window).mean()
     
-    # True Range (TR)
-    df['Previous_Close'] = df['Close'].shift(1)
-    df['High-Low'] = df['High'] - df['Low']
-    df['High-PrevClose'] = abs(df['High'] - df['Previous_Close'])
-    df['Low-PrevClose'] = abs(df['Low'] - df['Previous_Close'])
-    df['TR'] = df[['High-Low', 'High-PrevClose', 'Low-PrevClose']].max(axis=1)
+    # Standart Sapma
+    df['STD'] = df['Close'].rolling(window=window).std()
     
-    # ATR Hesaplaması (TR'nin basit hareketli ortalaması)
-    df['ATR'] = df['TR'].rolling(window=atr_period).mean()
-    
-    # Alt ve Üst Keltner Bandları
-    df['Keltner_Upper'] = df['EMA'] + (multiplier * df['ATR'])
-    df['Keltner_Lower'] = df['EMA'] - (multiplier * df['ATR'])
+    # Alt ve Üst Bollinger Bandları
+    df['Boll_Upper'] = df['SMA'] + (std_dev_multiplier * df['STD'])
+    df['Boll_Lower'] = df['SMA'] - (std_dev_multiplier * df['STD'])
     
     return df
 
@@ -44,12 +37,12 @@ def analyze_stock(ticker):
             print(f"[DEBUG] {ticker}: Veri bulunamadı veya yetersiz satır ({len(df)} satır).")
             return None
             
-        df = calculate_keltner_channels(df)
+        df = calculate_bollinger_bands(df)
         
         # Son güncel mumdaki veriler
         latest_row = df.iloc[-1]
         current_price = latest_row['Close']
-        lower_band = latest_row['Keltner_Lower']
+        lower_band = latest_row['Boll_Lower']
         
         # Mükemmel alım pozisyonunu tespit etmek:
         # Fiyatın alt bandın %0.5 kadar yakınında veya altında olması şartı
@@ -82,7 +75,7 @@ def main():
         return
 
     print(f"Toplam {len(tickers)} hisse analiz ediliyor (5 dakikalık periyot, 7 günlük lookback).")
-    print("Mükemmel alım noktasını (Keltner alt bandı) bulan tarama başlatıldı. Lütfen bekleyin...\n")
+    print("Mükemmel alım noktasını (Bollinger alt bandı) bulan tarama başlatıldı. Lütfen bekleyin...\n")
     
     results = []
     # Çoklu iş parçacığıyla (multithreading) indirmeyi hızlandırıyoruz
@@ -95,7 +88,7 @@ def main():
     results.sort(key=lambda x: x['Fark (%)'])
     
     if not results:
-        print("Şu anda Keltner alt bandına yeterince yakın veya altında olan hisse bulunamadı.")
+        print("Şu anda Bollinger alt bandına yeterince yakın veya altında olan hisse bulunamadı.")
     else:
         print(f"{'Hisse':<10} | {'Fiyat':<10} | {'Alım Limit Fiyatı':<20} | {'Banda Uzaklık (%)':<15}")
         print("-" * 65)

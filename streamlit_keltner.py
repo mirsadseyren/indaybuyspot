@@ -6,25 +6,18 @@ import plotly.graph_objects as go
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-st.set_page_config(page_title="Keltner Channel Hisse Tarama", layout="wide")
+st.set_page_config(page_title="BollM Hisse Tarama", layout="wide")
 
-def calculate_keltner_channels(df, ema_period=20, atr_period=14, multiplier=2.0):
-    # EMA (Orta Band)
-    df['EMA'] = df['Close'].ewm(span=ema_period, adjust=False).mean()
+def calculate_bollinger_bands(df, window=20, std_dev_multiplier=2.0):
+    # SMA (Orta Band)
+    df['SMA'] = df['Close'].rolling(window=window).mean()
     
-    # True Range (TR)
-    df['Previous_Close'] = df['Close'].shift(1)
-    df['High-Low'] = df['High'] - df['Low']
-    df['High-PrevClose'] = abs(df['High'] - df['Previous_Close'])
-    df['Low-PrevClose'] = abs(df['Low'] - df['Previous_Close'])
-    df['TR'] = df[['High-Low', 'High-PrevClose', 'Low-PrevClose']].max(axis=1)
+    # Standart Sapma
+    df['STD'] = df['Close'].rolling(window=window).std()
     
-    # ATR Hesaplaması (TR'nin basit hareketli ortalaması)
-    df['ATR'] = df['TR'].rolling(window=atr_period).mean()
-    
-    # Alt ve Üst Keltner Bandları
-    df['Keltner_Upper'] = df['EMA'] + (multiplier * df['ATR'])
-    df['Keltner_Lower'] = df['EMA'] - (multiplier * df['ATR'])
+    # Alt ve Üst Bollinger Bandları
+    df['Boll_Upper'] = df['SMA'] + (std_dev_multiplier * df['STD'])
+    df['Boll_Lower'] = df['SMA'] - (std_dev_multiplier * df['STD'])
     
     return df
 
@@ -55,7 +48,7 @@ def fetch_data(ticker, period='7d', interval='5m'):
         if df.empty or len(df) < 30:
             return ticker, None, None, None
             
-        df = calculate_keltner_channels(df)
+        df = calculate_bollinger_bands(df)
         return ticker, df, expected_high, expected_low
     except Exception as e:
         return ticker, None, None, None
@@ -78,24 +71,24 @@ def plot_stock(ticker, df, tolerance, title_suffix, interval):
                 close=df_plot['Close'],
                 name='Fiyat Mumu'))
 
-    # Keltner Upper
-    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['Keltner_Upper'], 
+    # Bollinger Upper
+    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['Boll_Upper'], 
                              line=dict(color='rgba(255, 0, 0, 0.5)', width=1), 
-                             name='Keltner Üst'))
+                             name='Bollinger Üst'))
     
-    # EMA
-    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['EMA'], 
+    # SMA
+    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['SMA'], 
                              line=dict(color='rgba(255, 165, 0, 0.5)', width=1, dash='dash'), 
-                             name='EMA (20)'))
+                             name='SMA (20)'))
 
-    # Keltner Lower
-    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['Keltner_Lower'], 
+    # Bollinger Lower
+    fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['Boll_Lower'], 
                              line=dict(color='rgba(0, 128, 0, 0.5)', width=1), 
-                             name='Keltner Alt',
+                             name='Bollinger Alt',
                              fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'))
                              
     # GÜÇLÜ AL noktalarını tespit et (fiyat belirlenen toleransa veya daha altına düştüğünde)
-    buy_signals = df_plot[((df_plot['Low'] - df_plot['Keltner_Lower']) / df_plot['Keltner_Lower'] * 100) <= tolerance]
+    buy_signals = df_plot[((df_plot['Low'] - df_plot['Boll_Lower']) / df_plot['Boll_Lower'] * 100) <= tolerance]
     
     if not buy_signals.empty:
         fig.add_trace(go.Scatter(x=buy_signals.index, y=buy_signals['Low'] - (buy_signals['Low'] * 0.002), # Biraz altına yerleştir
@@ -107,7 +100,7 @@ def plot_stock(ticker, df, tolerance, title_suffix, interval):
                                  name='Güçlü Al Sinyali'))
 
     # GÜÇLÜ SAT noktalarını tespit et (fiyat belirlenen toleransa veya daha üstüne çıktığında)
-    sell_signals = df_plot[((df_plot['Keltner_Upper'] - df_plot['High']) / df_plot['Keltner_Upper'] * 100) <= tolerance]
+    sell_signals = df_plot[((df_plot['Boll_Upper'] - df_plot['High']) / df_plot['Boll_Upper'] * 100) <= tolerance]
     
     if not sell_signals.empty:
         fig.add_trace(go.Scatter(x=sell_signals.index, y=sell_signals['High'] + (sell_signals['High'] * 0.002), # Biraz üstüne yerleştir
@@ -135,7 +128,7 @@ def plot_stock(ticker, df, tolerance, title_suffix, interval):
         xaxis_settings['rangebreaks'] = rangebreaks
 
     fig.update_layout(
-        title=f"{ticker} - {title_suffix} Keltner Kanalı",
+        title=f"{ticker} - {title_suffix} Bollinger Bantları",
         yaxis_title="Fiyat (TL)",
         xaxis_title="Zaman",
         xaxis_rangeslider_visible=False,
@@ -147,10 +140,10 @@ def plot_stock(ticker, df, tolerance, title_suffix, interval):
     return fig
 
 def main():
-    st.title("📈 Keltner Channel Hisse Tarama & Analiz")
+    st.title("📈 Bollinger Bands (BollM) Hisse Tarama & Analiz")
     st.markdown("""
     Bu uygulama, girdiğiniz hisselerin verilerini çeker, 
-    Keltner kanallarını hesaplar ve fiyat Keltner kanallarında sınır bölgelere belirlenen tolerans mesafesinde yakınsa (veya aştıysa) **Alım/Satım Sinyalleri** tablosunda gösterir.
+    Bollinger bantlarını hesaplar ve fiyat Bollinger bantlarında sınır bölgelere belirlenen tolerans mesafesinde yakınsa (veya aştıysa) **Alım/Satım Sinyalleri** tablosunda gösterir.
     """)
 
     col1, col2, col3 = st.columns([2, 1, 1])
@@ -201,8 +194,8 @@ def main():
                 # Sinyal kontrolü
                 latest_row = df.iloc[-1]
                 current_price = latest_row['Close']
-                lower_band = latest_row['Keltner_Lower']
-                upper_band = latest_row['Keltner_Upper']
+                lower_band = latest_row['Boll_Lower']
+                upper_band = latest_row['Boll_Upper']
                 
                 # Alım (Alt banda yakınlık) ve Satım (Üst banda yakınlık) uzaklıkları
                 distance_buy_pct = (current_price - lower_band) / lower_band * 100
@@ -251,7 +244,7 @@ def main():
             results_df = results_df.sort_values(by='Banda Uzaklık (%)').reset_index(drop=True)
             st.dataframe(results_df, use_container_width=True)
         else:
-            st.warning(f"Şu anki güncel fiyatlarda, Keltner bandlarına %{tolerance} yakınlığında bir hisse bulunamadı.")
+            st.warning(f"Şu anki güncel fiyatlarda, Bollinger bantlarına %{tolerance} yakınlığında bir hisse bulunamadı.")
 
         st.subheader("📊 Hisse Grafikleri")
         for ticker, fig in graphs:
